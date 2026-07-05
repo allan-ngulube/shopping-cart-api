@@ -1,6 +1,7 @@
 package com.allan.shopping_cart_api.service;
 
 import com.allan.shopping_cart_api.entity.Product;
+import com.allan.shopping_cart_api.exception.ProductNotFoundException;
 import com.allan.shopping_cart_api.repository.ProductRepository;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,6 @@ public class ProductService {
 
     public Product getProductById(Long id) {
         return productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new ProductNotFoundException(id));
     }
 }
