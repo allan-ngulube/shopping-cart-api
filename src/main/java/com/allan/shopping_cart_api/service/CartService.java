@@ -4,6 +4,9 @@ import com.allan.shopping_cart_api.entity.Cart;
 import com.allan.shopping_cart_api.entity.CartItem;
 import com.allan.shopping_cart_api.entity.Product;
 import com.allan.shopping_cart_api.entity.User;
+import com.allan.shopping_cart_api.exception.ActiveCartNotFoundException;
+import com.allan.shopping_cart_api.exception.ProductNotFoundException;
+import com.allan.shopping_cart_api.exception.UserNotFoundException;
 import com.allan.shopping_cart_api.repository.CartItemRepository;
 import com.allan.shopping_cart_api.repository.CartRepository;
 import com.allan.shopping_cart_api.repository.ProductRepository;
@@ -32,7 +35,7 @@ public class CartService {
         return cartRepository.findByUserIdAndStatus(userId, "ACTIVE")
                 .orElseGet(() -> {
                     User user = userRepository.findById(userId)
-                            .orElseThrow(() -> new RuntimeException("User not found"));
+                            .orElseThrow(() -> new UserNotFoundException(userId));
 
                     Cart cart = Cart.builder()
                             .user(user)
@@ -50,7 +53,7 @@ public class CartService {
         Cart cart = getOrCreateActiveCart(userId);
 
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new ProductNotFoundException(productId));
 
         CartItem cartItem = cartItemRepository
                 .findByCartIdAndProductId(cart.getId(), product.getId())
@@ -75,7 +78,7 @@ public class CartService {
     public List<CartItem> getCartItems(Long userId) {
 
         Cart cart = cartRepository.findByUserIdAndStatus(userId, "ACTIVE")
-                .orElseThrow(() -> new RuntimeException("Active cart not found"));
+                .orElseThrow(() -> new ActiveCartNotFoundException(userId));
 
         return cartItemRepository.findByCartId(cart.getId());
     }
