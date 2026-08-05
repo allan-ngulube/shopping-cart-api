@@ -1,8 +1,10 @@
 package com.allan.shopping_cart_api.controller;
 
+import com.allan.shopping_cart_api.dto.UpdateCartItemRequest;
 import com.allan.shopping_cart_api.entity.Cart;
 import com.allan.shopping_cart_api.entity.CartItem;
 import com.allan.shopping_cart_api.service.CartService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,6 +23,7 @@ public class CartController {
     public Cart getOrCreateActiveCart(@PathVariable Long userId) {
         return cartService.getOrCreateActiveCart(userId);
     }
+
     @PostMapping("/users/{userId}/products/{productId}")
     public Cart addItemToCart(
             @PathVariable Long userId,
@@ -29,8 +32,30 @@ public class CartController {
     ) {
         return cartService.addItemToCart(userId, productId, quantity);
     }
+
     @GetMapping("/users/{userId}/items")
     public List<CartItem> getCartItems(@PathVariable Long userId) {
         return cartService.getCartItems(userId);
+    }
+
+    @PutMapping("/users/{userId}/products/{productId}")
+    public Cart updateItemQuantity(
+            @PathVariable Long userId,
+            @PathVariable Long productId,
+            @Valid @RequestBody UpdateCartItemRequest request
+    ) {
+        return cartService.updateItemQuantity(
+                userId,
+                productId,
+                request.getQuantity()
+        );
+    }
+
+    @DeleteMapping("/users/{userId}/products/{productId}")
+    public Cart removeItemFromCart(
+            @PathVariable Long userId,
+            @PathVariable Long productId
+    ) {
+        return cartService.removeItemFromCart(userId, productId);
     }
 }

@@ -18,9 +18,12 @@ public class CartService {
     private final CartRepository cartRepository;
     private final UserRepository userRepository;
     private final CartItemRepository cartItemRepository;
-    final ProductRepository productRepository;
+    private final ProductRepository productRepository;
 
-    public CartService(CartRepository cartRepository, UserRepository userRepository, CartItemRepository cartItemRepository, ProductRepository productRepository) {
+    public CartService(CartRepository cartRepository,
+                       UserRepository userRepository,
+                       CartItemRepository cartItemRepository,
+                       ProductRepository productRepository) {
         this.cartRepository = cartRepository;
         this.userRepository = userRepository;
         this.cartItemRepository = cartItemRepository;
@@ -47,6 +50,10 @@ public class CartService {
 
     public Cart addItemToCart(Long userId, Long productId, Integer quantity) {
 
+        if (quantity == null || quantity <= 0) {
+            throw new RuntimeException("Quantity must be greater than zero");
+        }
+
         Cart cart = getOrCreateActiveCart(userId);
 
         Product product = productRepository.findById(productId)
@@ -56,8 +63,18 @@ public class CartService {
                 .findByCartIdAndProductId(cart.getId(), product.getId())
                 .orElse(null);
 
+        int requestedQuantity = quantity;
+
         if (cartItem != null) {
-            cartItem.setQuantity(cartItem.getQuantity() + quantity);
+            requestedQuantity += cartItem.getQuantity();
+        }
+
+        if (requestedQuantity > product.getStockQuantity()) {
+            throw new RuntimeException("Not enough inventory available");
+        }
+
+        if (cartItem != null) {
+            cartItem.setQuantity(requestedQuantity);
         } else {
             cartItem = CartItem.builder()
                     .cart(cart)
@@ -78,5 +95,52 @@ public class CartService {
                 .orElseThrow(() -> new RuntimeException("Active cart not found"));
 
         return cartItemRepository.findByCartId(cart.getId());
+    }
+
+    public Cart updateItemQuantity(
+            Long userId,
+            Long productId,
+            Integer quantity
+    ) {
+        if (quantity == null || quantity <= 0) {
+            throw new RuntimeException("Quantity must be greater than zero");
+        }
+
+        Cart cart = cartRepository
+                .findByUserIdAndStatus(userId, "ACTIVE")
+                .orElseThrow(() -> new RuntimeException("Active cart not found"));
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        if (quantity > product.getStockQuantity()) {
+            throw new RuntimeException("Not enough inventory available");
+        }
+
+        CartItem cartItem = cartItemRepository
+                .findByCartIdAndProductId(cart.getId(), productId)
+                .orElseThrow(() -> new RuntimeException("Item not found in cart"));
+
+        cartItem.setQuantity(quantity);
+        cartItemRepository.save(cartItem);
+
+        cart.setUpdatedAt(LocalDateTime.now());
+        return cartRepository.save(cart);
+    }
+
+    public Cart removeItemFromCart(Long userId, Long productId) {
+
+        Cart cart = cartRepository
+                .findByUserIdAndStatus(userId, "ACTIVE")
+                .orElseThrow(() -> new RuntimeException("Active cart not found"));
+
+        CartItem cartItem = cartItemRepository
+                .findByCartIdAndProductId(cart.getId(), productId)
+                .orElseThrow(() -> new RuntimeException("Item not found in cart"));
+
+        cartItemRepository.delete(cartItem);
+
+        cart.setUpdatedAt(LocalDateTime.now());
+        return cartRepository.save(cart);
     }
 }
