@@ -4,6 +4,8 @@ import com.allan.shopping_cart_api.entity.Cart;
 import com.allan.shopping_cart_api.entity.CartItem;
 import com.allan.shopping_cart_api.entity.Order;
 import com.allan.shopping_cart_api.entity.OrderItem;
+import com.allan.shopping_cart_api.kafka.event.CheckoutCompletedEvent;
+import com.allan.shopping_cart_api.kafka.producer.CheckoutEventProducer;
 import com.allan.shopping_cart_api.repository.CartItemRepository;
 import com.allan.shopping_cart_api.repository.CartRepository;
 import com.allan.shopping_cart_api.repository.OrderRepository;
@@ -23,30 +25,39 @@ public class CheckoutService {
     private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
     private final OrderRepository orderRepository;
+    private final CheckoutEventProducer checkoutEventProducer;
 
     public CheckoutService(
             CartRepository cartRepository,
             CartItemRepository cartItemRepository,
             ProductRepository productRepository,
-            OrderRepository orderRepository
+            OrderRepository orderRepository,
+            CheckoutEventProducer checkoutEventProducer
     ) {
         this.cartRepository = cartRepository;
         this.cartItemRepository = cartItemRepository;
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
+        this.checkoutEventProducer = checkoutEventProducer;
     }
 
     @Transactional
     public Order checkout(Long userId) {
 
-        // Find the user's active cart.
         Cart cart = cartRepository
                 .findByUserIdAndStatus(userId, "ACTIVE")
                 .orElseThrow(() ->
                         new RuntimeException("Active cart not found")
                 );
 
-        // Load all items currently in the cart.
+        /*
+         * Read the user information before the bulk stock update.
+         * The stock update may clear or detach entities from Hibernate's
+         * persistence context, which can make the lazy User proxy unavailable.
+         */
+        int customerId = cart.getUser().getId();
+        String customerEmail = cart.getUser().getEmail();
+
         List<CartItem> cartItems =
                 cartItemRepository.findByCartIdWithProduct(cart.getId());
 
@@ -66,11 +77,6 @@ public class CheckoutService {
 
         for (CartItem cartItem : cartItems) {
 
-            /*
-             * Atomically checks available stock and deducts it.
-             * If zero rows are updated, the requested quantity
-             * is no longer available.
-             */
             int updatedRows = productRepository.deductStock(
                     cartItem.getProduct().getId(),
                     cartItem.getQuantity()
@@ -103,13 +109,21 @@ public class CheckoutService {
 
         order.setTotalAmount(totalAmount);
 
-        // Cascade saves all OrderItem records with the Order.
         Order savedOrder = orderRepository.save(order);
 
-        // Mark this cart as completed so it cannot be reused.
         cart.setStatus("CHECKED_OUT");
         cart.setUpdatedAt(LocalDateTime.now());
         cartRepository.save(cart);
+
+        CheckoutCompletedEvent event = new CheckoutCompletedEvent(
+                savedOrder.getId(),
+                customerId,
+                customerEmail,
+                savedOrder.getTotalAmount(),
+                savedOrder.getStatus()
+        );
+
+        checkoutEventProducer.publish(event);
 
         return savedOrder;
     }
